@@ -48,8 +48,7 @@ app.use(session({
 
 const graph = (path) => `https://graph.facebook.com/${GRAPH_VERSION}/${path}`;
 const now = () => new Date().toISOString();
-const scopes = ['public_profile', 'email', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts'];
-
+const scopes = ['public_profile'];
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'Facebook Bulk Scheduler Pro', timestamp: now() }));
 app.get('/config/status', (_req, res) => res.json({
   configured: Boolean(META_APP_ID && META_APP_SECRET && APP_BASE_URL && process.env.SESSION_SECRET),
