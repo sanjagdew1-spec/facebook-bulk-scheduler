@@ -81,8 +81,9 @@ app.get('/auth/facebook/callback', async (req, res) => {
     if (!meResponse.ok || !me.id) throw new Error(me.error?.message || 'Could not read the Facebook account.');
     req.session.fbUser = { id: String(me.id), name: me.name || 'Facebook user', accessToken: tokenData.access_token };
     await new Promise((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
-    res.redirect(`${FRONTEND_ORIGIN}/?facebook_connected=1`);
-  } catch (e) {
+    res.redirect('https://sanjagdew1-spec.github.io/facebook-bulk-scheduler/?facebook_connected=1');
+
+ } catch (e) {
     res.status(400).send(`Facebook connection failed: ${String(e.message || e)}. Check Meta app status, OAuth redirect URI, and permission access.`);
   }
 });
