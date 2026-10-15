@@ -29,7 +29,11 @@
             <a class="btn primary" href="https://facebook-bulk-scheduler.onrender.com/auth/facebook">Continue with Facebook <span aria-hidden="true">→</span></a>
             <a class="btn secondary" href="https://facebook-bulk-scheduler.onrender.com/health" target="_blank" rel="noopener">Check server status ↗</a>
           </div>
-          <p class="note">The Facebook button opens the backend's current login test. It does not publish anything by itself.</p>
+          <div class="actions" style="margin-top:14px">
+            <button class="btn secondary" id="checkPages" type="button">Check Facebook connection & Pages</button>
+          </div>
+          <pre id="apiResult" role="status" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere;background:#080d1b;border:1px solid #26334c;border-radius:12px;padding:14px;color:#d9e5ff;font-size:12px;line-height:1.6"></pre>
+          <p class="note">After Facebook login, use “Check Facebook connection & Pages” here so the browser sends the session cookie. This test does not publish anything.</p>
         </div>
         <aside class="side">
           <h2>Getting started</h2>
