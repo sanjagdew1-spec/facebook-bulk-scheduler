@@ -36,6 +36,21 @@ CREATE INDEX IF NOT EXISTS jobs_due_idx ON jobs(status, scheduled_at);
 `);
 
 app.set('trust proxy', 1);
+// GitHub Pages and Render are different origins. Allow the project site to call this API
+// while preserving session cookies; never allow arbitrary origins.
+app.use((req, res, next) => {
+  const allowedOrigin = 'https://sanjagdew1-spec.github.io';
+  const origin = req.headers.origin;
+  if (origin === allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.json({ limit: '2mb' }));
 app.use(session({
   name: 'fb_scheduler_sid',
@@ -43,7 +58,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   store: new (SQLiteStoreFactory(session))( { client: db, expired: { clear: true, intervalMs: 15 * 60 * 1000 } } ),
-  cookie: { httpOnly: true, secure: 'auto', sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 }
+  cookie: { httpOnly: true, secure: true, sameSite: 'none', maxAge: 7 * 24 * 60 * 60 * 1000 }
 }));
 
 const graph = (path) => `https://graph.facebook.com/${GRAPH_VERSION}/${path}`;
@@ -102,13 +117,51 @@ app.get('/api/pages', requireAuth, async (req, res) => {
     const url = `${graph('me/accounts')}?${new URLSearchParams({ fields: 'id,name,access_token,tasks', limit: '100', access_token: u.accessToken })}`;
     const response = await fetch(url);
     const data = await response.json();
-    if (!response.ok || data.error) return res.status(502).json({ error: data.error?.message || 'Meta did not return Pages. Check pages_show_list access and your Page role.' });
-    const pages = (data.data || []).map(p => ({ id: String(p.id), name: p.name, tasks: p.tasks || [] }));
+
+    // Diagnostic output intentionally excludes access tokens, IDs, and other secrets.
+    if (!response.ok || data.error) {
+      const err = data.error || {};
+      console.error('[pages-api] Meta rejected Page lookup', JSON.stringify({
+        httpStatus: response.status,
+        errorType: err.type || null,
+        errorCode: err.code || null,
+        errorSubcode: err.error_subcode || null,
+        message: err.message || 'Unknown Meta API error'
+      }));
+      return res.status(502).json({
+        pages: [],
+        diagnostic: {
+          source: 'Meta Graph API',
+          httpStatus: response.status,
+          errorType: err.type || null,
+          errorCode: err.code || null,
+          errorSubcode: err.error_subcode || null,
+          message: err.message || 'Meta did not return Pages.'
+        }
+      });
+    }
+
+    const rawPages = Array.isArray(data.data) ? data.data : [];
+    const pages = rawPages.map(p => ({ id: String(p.id), name: p.name, tasks: p.tasks || [] }));
     const save = db.prepare('INSERT INTO pages(user_id,page_id,name,access_token,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,page_id) DO UPDATE SET name=excluded.name, access_token=excluded.access_token, updated_at=excluded.updated_at');
-    const tx = db.transaction(() => { for (const p of data.data || []) save.run(u.id, String(p.id), p.name || 'Facebook Page', p.access_token, now()); });
+    const tx = db.transaction(() => { for (const p of rawPages) {
+      if (p.id && p.access_token) save.run(u.id, String(p.id), p.name || 'Facebook Page', p.access_token, now());
+    } });
     tx();
-    res.json({ pages });
-  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+
+    const diagnostic = {
+      source: 'Meta Graph API',
+      httpStatus: response.status,
+      returnedCount: pages.length,
+      hasPaging: Boolean(data.paging),
+      note: pages.length ? 'Page records received from Meta.' : 'Meta returned a successful response with zero Page records. This is not a server crash; check which access the current Facebook login actually grants.'
+    };
+    if (!pages.length) console.warn('[pages-api] Meta returned zero Pages', JSON.stringify(diagnostic));
+    res.json({ pages, diagnostic });
+  } catch (e) {
+    console.error('[pages-api] Unexpected server error', String(e.message || e));
+    res.status(500).json({ pages: [], diagnostic: { source: 'backend', message: 'Unexpected server error while loading Pages.' } });
+  }
 });
 
 app.get('/api/jobs', requireAuth, (req, res) => {
